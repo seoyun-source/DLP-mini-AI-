@@ -23,10 +23,28 @@ REGEX_PATTERNS = {
 
 
 def detect_by_regex(text: str):
-    """정규식으로 구조화된 개인정보를 찾아 리스트로 반환"""
+    """정규식으로 구조화된 개인정보를 찾아 리스트로 반환
+
+    REGEX_PATTERNS에 정의된 순서대로 검사하며, 이미 다른 패턴이 차지한
+    위치(span)와 겹치는 매치는 건너뛴다. 예: 전화번호가 먼저 탐지되면
+    같은 자리를 계좌번호 패턴이 중복으로 탐지하지 않도록 방지.
+    """
     results = []
+    occupied_spans = []  # 이미 탐지된 구간: [(start, end), ...]
+
     for label, pattern in REGEX_PATTERNS.items():
         for match in re.finditer(pattern, text):
+            start, end = match.span()
+
+            # 기존에 탐지된 구간과 겹치면 중복이므로 건너뜀
+            is_overlapping = any(
+                start < occ_end and end > occ_start
+                for occ_start, occ_end in occupied_spans
+            )
+            if is_overlapping:
+                continue
+
+            occupied_spans.append((start, end))
             results.append({
                 "text": match.group(),
                 "type": label,
@@ -39,7 +57,7 @@ def detect_by_regex(text: str):
 # ----------------------------
 # 2. Gemini API로 문맥 탐지 (2차 필터)
 # ----------------------------
-def detect_by_llm(text: str, api_key: str, model_name: str = "gemini-2.5-flash"):
+def detect_by_llm(text: str, api_key: str, model_name: str = "gemini-3.6-flash"):
     """정규식으로 못 잡는 문맥적 개인정보를 LLM으로 탐지"""
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel(model_name)
